@@ -17,6 +17,11 @@ public class ClassNameJarIterator implements ClassFileIterator {
     private Iterator<String> classFiles = new ArrayList<String>().iterator();
     private File jarFile;
 
+    public ClassNameJarIterator(final String classPath) {
+        jarFile = new File(classPath);
+        classFiles = Collections.emptyIterator();
+    }
+    
     public ClassNameJarIterator(final String classPath,
             final BuildContext buildContext) {
 

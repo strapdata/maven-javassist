@@ -15,6 +15,19 @@ public class ClassNameDirectoryIterator implements ClassFileIterator {
     private Iterator<File> classFiles = new ArrayList<File>().iterator();
     private File lastFile;
 
+    public ClassNameDirectoryIterator(final String classPath) {
+        this.classPath = classPath;
+        this.classFiles = Files.fileTreeTraverser()
+                .preOrderTraversal(new File(classPath))
+                .filter(new Predicate<File>() {
+                    @Override
+                    public boolean apply(File input) {
+                        return "class".equals(Files.getFileExtension(input
+                                .getName()));
+                    }
+                }).iterator();
+    }
+    
     public ClassNameDirectoryIterator(final String classPath,
             final BuildContext buildContext) {
         this.classPath = classPath;

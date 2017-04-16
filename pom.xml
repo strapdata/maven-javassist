@@ -7,7 +7,9 @@
     <packaging>pom</packaging>
     <version>2.4</version>
     <name>Javassist Maven Plugin</name>
-
+    <url>http://github.com/strapdata/maven-javassist</url>
+    <description>Javassit maven plugin</description>
+    
   <licenses>
     <license>
       <name>The Apache Software License, Version 2.0</name>
@@ -44,7 +46,24 @@
 
     <scm>
        <url>https://github.com/strapdata/maven-javassist</url>
+       <connection>scm:git:https://github.com/strapdata/maven-javassist.git</connection>
+       <developerConnection>scm:git:git@github.com:strapdata/javassist-maven.git</developerConnection>
+       <tag>HEAD</tag>
     </scm>
+  
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/strapdata/maven-javassist/issues</url>
+  </issueManagement>
+
+  <developers>
+    <developer>
+      <email>devops (at) strapdata (dot) com</email>
+      <name>Strapdata</name>
+      <url>http://www.strapdata.com</url>
+      <id>strapdata</id>
+    </developer>
+  </developers>
   
     <modules>
         <module>javassist-maven-plugin-core</module>
@@ -157,8 +176,9 @@
                <plugin>
                      <groupId>org.apache.maven.plugins</groupId>
                      <artifactId>maven-release-plugin</artifactId>
-                     <version>2.5</version>
+                     <version>2.5.3</version>
                      <configuration>
+                          <autoVersionSubmodules>true</autoVersionSubmodules>
                           <useReleaseProfile>false</useReleaseProfile>
                           <releaseProfiles>release</releaseProfiles>
                           <goals>deploy</goals>

@@ -1,92 +1,114 @@
-package nl.topicus.plugins.maven.javassist;
+package com.strapdata.ant;
 
 import static java.lang.Thread.currentThread;
 
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Vector;
+
+import org.apache.tools.ant.BuildException;
+import org.apache.tools.ant.DirectoryScanner;
+import org.apache.tools.ant.Task;
+import org.apache.tools.ant.types.FileSet;
+
+import com.google.common.collect.Lists;
 
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.LoaderClassPath;
 import javassist.NotFoundException;
+import nl.topicus.plugins.maven.javassist.ClassFileIterator;
+import nl.topicus.plugins.maven.javassist.ClassNameDirectoryIterator;
+import nl.topicus.plugins.maven.javassist.ClassNameJarIterator;
+import nl.topicus.plugins.maven.javassist.ClassTransformer;
+import nl.topicus.plugins.maven.javassist.ILogger;
+import nl.topicus.plugins.maven.javassist.TransformationException;
 
-import org.apache.maven.artifact.DependencyResolutionRequiredException;
-import org.apache.maven.plugin.AbstractMojo;
-import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugins.annotations.Component;
-import org.apache.maven.plugins.annotations.LifecyclePhase;
-import org.apache.maven.plugins.annotations.Mojo;
-import org.apache.maven.plugins.annotations.Parameter;
-import org.apache.maven.plugins.annotations.ResolutionScope;
-import org.apache.maven.project.MavenProject;
-import org.sonatype.plexus.build.incremental.BuildContext;
-
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
-
-@Mojo(name = "javassist", defaultPhase = LifecyclePhase.PROCESS_CLASSES, requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME)
-public class JavassistMojo extends AbstractMojo implements ILogger {
+public class JavassitTransformerTask  extends Task implements ILogger {
 
     private static final Class<ClassTransformer> TRANSFORMER_TYPE = ClassTransformer.class;
 
-    @Component
-    private BuildContext buildContext;
-
-    @Parameter(property = "project", defaultValue = "${project}")
-    private MavenProject project;
-
-    @Parameter(property = "transformerClass", required = true)
     private String transformerClass;
+    private String directory;
+    private Vector filesets = new Vector();
+    
+    List<String> processInclusions = new ArrayList<String>();
+    
+    public void setTransformer(String transformer) {
+        this.transformerClass = transformer;
+    }
 
-    @Parameter(property = "processInclusions", required = true)
-    private List<String> processInclusions;
+    public void setDirectory(String directory) {
+        this.directory = directory;
+    }
+    
+    public void addFileset(FileSet fileset) {
+        filesets.add(fileset);
+    }
 
-    @Parameter(property = "processExclusions")
-    private List<String> processExclusions;
+    protected void validate() {
+        if (directory==null) throw new BuildException("directory not set");
+        if (transformerClass==null) throw new BuildException("transformer not set");
+        if (filesets.size()<1) throw new BuildException("fileset not set");
+    }
 
-    @Parameter(property = "exclusions")
-    private List<String> exclusions;
+    
+    public void execute() {
+        validate();                                                             // 1
 
-    @Parameter(property = "outputDirectory", defaultValue = "${project.build.outputDirectory}")
-    private String outputDirectory;
-
-    public void execute() throws MojoExecutionException {
-        final ClassLoader originalContextClassLoader = currentThread()
-                .getContextClassLoader();
+        for(Iterator itFSets = filesets.iterator(); itFSets.hasNext(); ) {      // 2
+            FileSet fs = (FileSet)itFSets.next();
+            DirectoryScanner ds = fs.getDirectoryScanner(getProject());         // 3
+            String[] includedFiles = ds.getIncludedFiles();
+            for(int i=0; i<includedFiles.length; i++) {
+                String filename = includedFiles[i].replace('\\','/');           // 4
+                filename = filename.replace('/', '.').replace(".class","");
+                processInclusions.add(filename);
+            }
+        }
+        log("Including "+this.processInclusions);
+        
+        final ClassLoader originalContextClassLoader = currentThread().getContextClassLoader();
         try {
             final List<String> classpathElements = getCompileClasspathElements();
-            loadClassPath(originalContextClassLoader,
-                    generateClassPathUrls(classpathElements));
+            loadClassPath(originalContextClassLoader, generateClassPathUrls(classpathElements));
             transform(classpathElements);
-        } catch (DependencyResolutionRequiredException e) {
-            throw new MojoExecutionException(e.getMessage(), e);
+        } catch (Exception e) {
+            log("Error:"+e, e, 0);
+            e.printStackTrace();
         } finally {
             currentThread().setContextClassLoader(originalContextClassLoader);
         }
     }
 
-    public final void transform(final List<String> classPaths)
-            throws MojoExecutionException {
+    public final void transform(final List<String> classPaths) throws Exception {
         int errors = 0;
         if (classPaths.isEmpty())
             return;
 
         ClassTransformer transformer = instantiateTransformerClass();
         final ClassPool classPool = new ClassPool(ClassPool.getDefault());
-        classPool.appendClassPath(new LoaderClassPath(Thread.currentThread()
-                .getContextClassLoader()));
+        classPool.appendClassPath(directory);
+        classPool.appendClassPath(new LoaderClassPath(this.getClass().getClassLoader()));
+        classPool.appendClassPath(new LoaderClassPath(Thread.currentThread().getContextClassLoader()));
 
+        // check guava is antvisible from javassit
+        classPool.get("com.google.common.collect.ImmutableList");
+        classPool.get("com.google.common.collect.Sets$SetView");
+        
+        
         final Iterator<String> classPathIterator = classPaths.iterator();
         while (classPathIterator.hasNext()) {
             final String classPath = classPathIterator.next();
-            debug("Processing " + classPath);
+            log("Processing " + classPath);
             final ClassFileIterator classNames = createClassNameIterator(classPath);
             while (classNames.hasNext()) {
                 final String className = classNames.next();
@@ -100,31 +122,31 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
                         debug("Exclude " + className);
                         continue;
                     }
+                    debug("Transforming " + className);
 
                     transformer.applyTransformations(classPool, candidateClass);
-                    writeFile(candidateClass, outputDirectory);
+                    writeFile(candidateClass, directory);
                 } catch (final TransformationException e) {
                     errors++;
-                    addMessage(classNames.getLastFile(), 1, 1, e.getMessage(),
-                            null);
+                    log(classNames.getLastFile()+":"+e.getMessage());
                     continue;
                 } catch (final NotFoundException e) {
                     errors++;
-                    addMessage(classNames.getLastFile(), 1, 1, String.format(
+                    log(classNames.getLastFile()+":"+String.format(
                             "Class %s could not be resolved due "
                                     + "to dependencies not found on current "
-                                    + "classpath.", className), e);
+                                    + "classpath.", className)+":"+e);
                     continue;
                 } catch (final Exception e) {
                     errors++;
-                    addMessage(classNames.getLastFile(), 1, 1, String.format(
-                            "Class %s could not be transformed.", className), e);
+                    log(classNames.getLastFile()+":"+String.format("Class %s could not be transformed.", className)+":"+e);
+                    e.printStackTrace();
                     continue;
                 }
             }
         }
         if (errors > 0)
-            throw new MojoExecutionException(errors
+            throw new Exception(errors
                     + " errors found during transformation.");
     }
 
@@ -142,42 +164,41 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
             if (!dir.equals(".")) {
                 File outputDir = new File(dir);
                 outputDir.mkdirs();
-                buildContext.refresh(outputDir);
             }
         }
         try (DataOutputStream out = new DataOutputStream(
                 new BufferedOutputStream(
-                        buildContext.newFileOutputStream(new File(filename))))) {
+                        new FileOutputStream(new File(filename))))) {
             candidateClass.toBytecode(out);
         }
     }
 
     private ClassFileIterator createClassNameIterator(final String classPath) {
         if (new File(classPath).isDirectory()) {
-            return new ClassNameDirectoryIterator(classPath, buildContext);
+            return new ClassNameDirectoryIterator(classPath);
         } else {
-            return new ClassNameJarIterator(classPath, buildContext);
+            return new ClassNameJarIterator(classPath);
         }
     }
 
-    private List<String> getCompileClasspathElements()
-            throws DependencyResolutionRequiredException {
-        info("Scan project.build.outputDirectory="+project.getBuild().getOutputDirectory());
-        return Lists.newArrayList(project.getBuild().getOutputDirectory());
+    private List<String> getCompileClasspathElements() {
+        log("Scan project.build.outputDirectory="+directory);
+        return Lists.newArrayList(directory);
     }
 
-    protected ClassTransformer instantiateTransformerClass()
-            throws MojoExecutionException {
+    protected ClassTransformer instantiateTransformerClass() throws Exception {
         if (transformerClass == null || transformerClass.trim().isEmpty())
-            throw new MojoExecutionException(
+            throw new Exception(
                     "Invalid transformer class name passed");
 
         Class<?> transformerClassInstance;
         try {
-            transformerClassInstance = Class.forName(transformerClass.trim(),
-                    true, currentThread().getContextClassLoader());
+            log("Loading class "+transformerClass);
+            //transformerClassInstance = Class.forName(transformerClass.trim(),
+            //        true, currentThread().getContextClassLoader());
+            transformerClassInstance = Class.forName(transformerClass.trim());
         } catch (ClassNotFoundException e) {
-            throw new MojoExecutionException(e.getMessage(), e);
+            throw e;
         }
         ClassTransformer transformerInstance = null;
 
@@ -186,21 +207,21 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
                 transformerInstance = TRANSFORMER_TYPE
                         .cast(transformerClassInstance.newInstance());
             } catch (InstantiationException | IllegalAccessException e) {
-                throw new MojoExecutionException(e.getMessage(), e);
+                throw e;
             }
             transformerInstance.setLogger(this);
             transformerInstance.setProcessInclusions(processInclusions);
-            transformerInstance.setProcessExclusions(processExclusions);
-            transformerInstance.setExclusions(exclusions);
+            //transformerInstance.setProcessExclusions(processExclusions);
+            //transformerInstance.setExclusions(exclusions);
         } else {
-            throw new MojoExecutionException(
+            throw new Exception(
                     "Transformer class must inherit from "
                             + TRANSFORMER_TYPE.getName());
         }
 
         return transformerInstance;
     }
-
+    
     private List<URL> generateClassPathUrls(Iterable<String> classpathElements) {
         final List<URL> classPath = new ArrayList<URL>();
         for (final String runtimeResource : classpathElements) {
@@ -232,49 +253,48 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
     }
 
     @Override
-    public void addMessage(File file, int line, int pos, String message,
-            Throwable e) {
-        buildContext.addMessage(file, line, pos, message,
-                BuildContext.SEVERITY_ERROR, e);
+    public void addMessage(File file, int line, int pos, String message, Throwable e) {
+        // TODO Auto-generated method stub
+        
     }
 
     @Override
     public void debug(String message) {
-        getLog().info(message);
+        log(message);
     }
 
     @Override
     public void debug(String message, Throwable throwable) {
-        getLog().info(message, throwable);
+        log(message+":"+throwable, throwable, 0);
     }
 
     @Override
     public void info(String message) {
-        getLog().info(message);
+        log(message);
     }
 
     @Override
     public void info(String message, Throwable throwable) {
-        getLog().info(message, throwable);
+        log(message+":"+throwable, throwable, 0);
     }
 
     @Override
     public void warn(String message) {
-        getLog().warn(message);
+        log(message);
     }
 
     @Override
     public void warn(String message, Throwable throwable) {
-        getLog().warn(message, throwable);
+        log(message+":"+throwable, throwable, 0);
     }
 
     @Override
     public void error(String message) {
-        getLog().error(message);
+        log(message);
     }
 
     @Override
     public void error(String message, Throwable throwable) {
-        getLog().error(message, throwable);
+        log(message+":"+throwable, throwable, 0);
     }
 }
