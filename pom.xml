@@ -5,7 +5,7 @@
     <groupId>com.strapdata</groupId>
     <artifactId>javassist-maven</artifactId>
     <packaging>pom</packaging>
-    <version>2.5</version>
+    <version>2.6</version>
     <name>Javassist Maven Plugin</name>
     <url>http://github.com/strapdata/maven-javassist</url>
     <description>Javassit maven plugin</description>

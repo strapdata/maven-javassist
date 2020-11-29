@@ -1,45 +1,39 @@
 package nl.topicus.plugins.maven.javassist;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Iterator;
-
 import org.sonatype.plexus.build.incremental.BuildContext;
 
-import com.google.common.base.Predicate;
-import com.google.common.io.Files;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 
 public class ClassNameDirectoryIterator implements ClassFileIterator {
     private final String classPath;
     private Iterator<File> classFiles = new ArrayList<File>().iterator();
     private File lastFile;
 
-    public ClassNameDirectoryIterator(final String classPath) {
+    public ClassNameDirectoryIterator(final String classPath) throws IOException {
         this.classPath = classPath;
-        this.classFiles = Files.fileTreeTraverser()
-                .preOrderTraversal(new File(classPath))
-                .filter(new Predicate<File>() {
-                    @Override
-                    public boolean apply(File input) {
-                        return "class".equals(Files.getFileExtension(input
-                                .getName()));
-                    }
-                }).iterator();
+        this.classFiles = Files.find( Paths.get(classPath), 999, (p,at) -> p.toFile().getName().endsWith( ".class" ))
+                .map( p -> p.toFile() )
+                .collect( Collectors.toList() )
+                .iterator();
     }
-    
+
     public ClassNameDirectoryIterator(final String classPath,
-            final BuildContext buildContext) {
+            final BuildContext buildContext) throws IOException {
         this.classPath = classPath;
-        this.classFiles = Files.fileTreeTraverser()
-                .preOrderTraversal(new File(classPath))
-                .filter(new Predicate<File>() {
-                    @Override
-                    public boolean apply(File input) {
-                        return "class".equals(Files.getFileExtension(input
-                                .getName())) && buildContext.hasDelta(input);
-                    }
-                }).iterator();
+        this.classFiles = Files.find( Paths.get(classPath), 999, (p,at) -> p.toFile().getName().endsWith( ".class" )
+                && buildContext.hasDelta(p.toFile()), FileVisitOption.FOLLOW_LINKS )
+                .map( p -> p.toFile() )
+                .collect( Collectors.toList() )
+                .iterator();
     }
 
     @Override
@@ -54,7 +48,7 @@ public class ClassNameDirectoryIterator implements ClassFileIterator {
         try {
             final String qualifiedFileName = classFile.getCanonicalPath()
                     .substring(classPath.length() + 1);
-            return Files.getNameWithoutExtension(qualifiedFileName.replace(
+            return getNameWithoutExtension(qualifiedFileName.replace(
                     File.separator, "."));
         } catch (final IOException e) {
             throw new RuntimeException(e.getMessage());
@@ -69,5 +63,12 @@ public class ClassNameDirectoryIterator implements ClassFileIterator {
     @Override
     public void remove() {
         classFiles.remove();
+    }
+
+    public static String getNameWithoutExtension(String file) {
+        Objects.requireNonNull( file );
+        String fileName = (new File(file)).getName();
+        int dotIndex = fileName.lastIndexOf(46);
+        return dotIndex == -1 ? fileName : fileName.substring(0, dotIndex);
     }
 }

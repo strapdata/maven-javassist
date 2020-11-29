@@ -5,10 +5,12 @@ import static java.lang.Thread.currentThread;
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
@@ -27,9 +29,6 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.sonatype.plexus.build.incremental.BuildContext;
-
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 
 @Mojo(name = "javassist", defaultPhase = LifecyclePhase.PROCESS_CLASSES, requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME)
 public class JavassistMojo extends AbstractMojo implements ILogger {
@@ -65,7 +64,7 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
             loadClassPath(originalContextClassLoader,
                     generateClassPathUrls(classpathElements));
             transform(classpathElements);
-        } catch (DependencyResolutionRequiredException e) {
+        } catch (DependencyResolutionRequiredException | IOException e) {
             throw new MojoExecutionException(e.getMessage(), e);
         } finally {
             currentThread().setContextClassLoader(originalContextClassLoader);
@@ -73,7 +72,7 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
     }
 
     public final void transform(final List<String> classPaths)
-            throws MojoExecutionException {
+            throws MojoExecutionException, IOException {
         int errors = 0;
         if (classPaths.isEmpty())
             return;
@@ -152,7 +151,7 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
         }
     }
 
-    private ClassFileIterator createClassNameIterator(final String classPath) {
+    private ClassFileIterator createClassNameIterator(final String classPath) throws IOException {
         if (new File(classPath).isDirectory()) {
             return new ClassNameDirectoryIterator(classPath, buildContext);
         } else {
@@ -163,7 +162,7 @@ public class JavassistMojo extends AbstractMojo implements ILogger {
     private List<String> getCompileClasspathElements()
             throws DependencyResolutionRequiredException {
         info("Scan project.build.outputDirectory="+project.getBuild().getOutputDirectory());
-        return Lists.newArrayList(project.getBuild().getOutputDirectory());
+        return new ArrayList<>(Arrays.asList(project.getBuild().getOutputDirectory()));
     }
 
     protected ClassTransformer instantiateTransformerClass()

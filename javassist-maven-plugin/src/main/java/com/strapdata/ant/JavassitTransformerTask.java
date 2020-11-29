@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016 Strapdata (contact@strapdata.com).
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
  *
@@ -16,24 +16,16 @@ package com.strapdata.ant;
 
 import static java.lang.Thread.currentThread;
 
-import java.io.BufferedOutputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Vector;
+import java.util.*;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.DirectoryScanner;
 import org.apache.tools.ant.Task;
 import org.apache.tools.ant.types.FileSet;
-
-import com.google.common.collect.Lists;
 
 import javassist.ClassPool;
 import javassist.CtClass;
@@ -53,9 +45,9 @@ public class JavassitTransformerTask  extends Task implements ILogger {
     private String transformerClass;
     private String directory;
     private Vector filesets = new Vector();
-    
+
     List<String> processInclusions = new ArrayList<String>();
-    
+
     public void setTransformer(String transformer) {
         this.transformerClass = transformer;
     }
@@ -63,7 +55,7 @@ public class JavassitTransformerTask  extends Task implements ILogger {
     public void setDirectory(String directory) {
         this.directory = directory;
     }
-    
+
     public void addFileset(FileSet fileset) {
         filesets.add(fileset);
     }
@@ -74,7 +66,7 @@ public class JavassitTransformerTask  extends Task implements ILogger {
         if (filesets.size()<1) throw new BuildException("fileset not set");
     }
 
-    
+
     public void execute() {
         validate();                                                             // 1
 
@@ -89,7 +81,7 @@ public class JavassitTransformerTask  extends Task implements ILogger {
             }
         }
         log("Including "+this.processInclusions);
-        
+
         final ClassLoader originalContextClassLoader = currentThread().getContextClassLoader();
         try {
             final List<String> classpathElements = getCompileClasspathElements();
@@ -114,11 +106,6 @@ public class JavassitTransformerTask  extends Task implements ILogger {
         classPool.appendClassPath(new LoaderClassPath(this.getClass().getClassLoader()));
         classPool.appendClassPath(new LoaderClassPath(Thread.currentThread().getContextClassLoader()));
 
-        // check guava is antvisible from javassit
-        classPool.get("com.google.common.collect.ImmutableList");
-        classPool.get("com.google.common.collect.Sets$SetView");
-        
-        
         final Iterator<String> classPathIterator = classPaths.iterator();
         while (classPathIterator.hasNext()) {
             final String classPath = classPathIterator.next();
@@ -187,7 +174,7 @@ public class JavassitTransformerTask  extends Task implements ILogger {
         }
     }
 
-    private ClassFileIterator createClassNameIterator(final String classPath) {
+    private ClassFileIterator createClassNameIterator(final String classPath) throws IOException {
         if (new File(classPath).isDirectory()) {
             return new ClassNameDirectoryIterator(classPath);
         } else {
@@ -197,7 +184,7 @@ public class JavassitTransformerTask  extends Task implements ILogger {
 
     private List<String> getCompileClasspathElements() {
         log("Scan project.build.outputDirectory="+directory);
-        return Lists.newArrayList(directory);
+        return new ArrayList<>( Arrays.asList(directory));
     }
 
     protected ClassTransformer instantiateTransformerClass() throws Exception {
@@ -235,7 +222,7 @@ public class JavassitTransformerTask  extends Task implements ILogger {
 
         return transformerInstance;
     }
-    
+
     private List<URL> generateClassPathUrls(Iterable<String> classpathElements) {
         final List<URL> classPath = new ArrayList<URL>();
         for (final String runtimeResource : classpathElements) {
@@ -269,7 +256,7 @@ public class JavassitTransformerTask  extends Task implements ILogger {
     @Override
     public void addMessage(File file, int line, int pos, String message, Throwable e) {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
